@@ -1,0 +1,522 @@
+---
+title: "Home team Advantage Analysis"
+author: "Kuanyu Lai"
+date: "2023-12-18"
+output: 
+  rmdformats::html_clean:
+    highlight: kate
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggpubr)
+library(sqldf)
+library(effsize)
+library(patchwork)
+library(readr)
+```
+
+## Does Home Team have Foul Call Advantage?
+
+we want to determine if there is an officiating bias that might explain home-court advantage. We’ll compare counts of foul calls and free throw attempts between home and visiting teams and then conduct statistical tests to determine if any variances in those counts are statistically significant and what their effect size may be. Which statistical tests to run mostly depends on the data; because we’ll be comparing two groups (and just two groups) where the outcomes are numeric, our plan is to therefore run t-tests to determine whether or not any variances are statistically significant and Cohen’s d effect size tests so as to measure the size of those variances.
+
+• We’ll begin by loading packages, importing the data and then running a short series of data wrangling operations.
+
+• With respect to the 2018-19 season, we’ll run t-tests on personal foul calls and free throws (which are usually awarded to one team following a personal foul committed by the opposing team) on data split between the regular season and postseason. Then we’ll run effect size tests to complement our t-tests.
+
+• With respect to the 2019-20 season, which was impacted by COVID-19, we’ll again run
+a series of t-tests and effect size tests, but this time the data will be split on the regular
+season only. We’ll first run our tests on a data set that contains regular season games
+played before COVID-19 temporarily suspended play and then again when the season
+resumed and all games were played at a neutral site in Orlando, Florida. 
+
+```{r}
+df1 <-  read_csv("data/data/nba_boxscore_1819.csv")
+df2 <- read_csv("data/data/nba_boxscore_1920.csv")
+```
+
+### Wrangling data
+
+```{r}
+df1 %>%
+  filter(VENUE == "R") -> df3
+
+df3 %>%
+  select(DATASET, TEAM, VENUE, FT, FTA, PF) -> df3
+
+df3 %>% 
+  rename(dataset = DATASET, teamR = TEAM, venueR = VENUE, ftR = FT, ftaR = FTA,
+               pfR = PF) -> df3
+
+df3$dataset <- as.factor(df3$dataset)
+df3$teamR <- as.factor(df3$teamR)
+df3$venueR <- as.factor(df3$venueR)
+
+df1 %>%
+  filter(VENUE == "H") -> df4
+
+df4 %>% 
+  select(TEAM, VENUE, FT, FTA, PF) -> df4
+
+df4 %>% 
+  rename(teamH = TEAM, venueH = VENUE, ftH = FT, ftaH = FTA,
+               pfH = PF) -> df4
+
+df4$teamH <- as.factor(df4$teamH)
+df4$venueH <- as.factor(df4$venueH)
+
+dim(df3) 
+dim(df4)
+fouls1819 <- cbind(df3, df4)
+```
+
+## Analysis on 2018-19 Data
+
+Our analysis will be divided into two parts. First, we’ll compute and test variances in foul calls and free throw attempts between home and visiting teams over the course of the 2018-19
+regular season; then we’ll compute and test the same for the 2018-19 playoffs. 
+
+```{r}
+fouls1819 %>%
+ filter(dataset == "NBA 2018-2019 Regular Season") -> fouls1819reg
+
+sum(fouls1819reg$pfR) - sum(fouls1819reg$pfH)
+
+mean(fouls1819reg$pfR) - mean(fouls1819reg$pfH)
+
+mean(fouls1819reg$ftaR) - mean(fouls1819reg$ftaH)
+
+sum(fouls1819reg$ftR) / sum(fouls1819reg$ftaR)
+
+sum(fouls1819reg$ftH) / sum(fouls1819reg$ftaH)
+
+
+```
+
+• Road teams were called for 470 more personal fouls than home teams during the 2018- 19 regular season; to be exact, road teams were called for a total of 25,947 personal fouls, versus 25,477 for home teams.
+
+• Road teams were therefore whistled for approximately 0.38 more personal fouls per game than were home teams.
+
+• As a result, home teams attempted approximately 0.65 more free throws per game than road teams.
+
+• And while home teams averaged more free throw attempts per game, home and road teams were equally efficient at making them; both home and road teams were successful on 77% of their free throw attempts.
+
+### T-TEST: PERSONAL FOULS and  FREE THROW ATTEMPTS
+ 
+```{r}
+fouls1819 %>% 
+  filter(dataset == "NBA 2018-2019 Regular Season") -> fouls1819reg
+t.test(fouls1819reg$pfR, fouls1819reg$pfH)
+t.test(fouls1819reg$ftaR, fouls1819reg$ftaH)
+```
+
+From the test results we can see that there is a significant difference between home team and road team on number of foul calls and free throws attempts. Next we can visualize the variance to see a better picture.
+
+```{r}
+temp1 <- select(fouls1819reg, c(pfR, pfH))
+temp1 %>%
+  pivot_longer(cols = c(pfR, pfH),
+               names_to = "team",
+               values_to = "fouls") -> temp1
+head(temp1)
+
+temp1.text <- c("Home Team", "Road Team")
+p1 <- ggplot(temp1, aes(x = team, y = fouls, fill = team)) + 
+  geom_boxplot() +
+  labs(title = "Personal Foul Calls: Home vs. Road Teams", 
+       subtitle = "2018-19 Regular Season",
+       x = "", 
+       y = "Personal Fouls per Game") +
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 4, 
+               color = "white", fill = "white") + 
+  theme(legend.position = "none") +
+  scale_x_discrete(labels = temp1.text) +
+  theme(plot.title = element_text(face = "bold")) +
+  stat_compare_means(method = "t.test", 
+                     label.x = 1.4, label.y = 34)
+
+temp2 <- select(fouls1819reg, c(5,10)) 
+temp2 %>%
+  pivot_longer(cols = c(ftaR, ftaH),
+               names_to = "team",
+               values_to = "ftattempts") -> temp2
+
+temp2.text <- c("Home Team", "Road Team")
+p2 <- ggplot(temp2, aes(x = team, y = ftattempts, fill = team)) + 
+  geom_boxplot() +
+  labs(title = "Free Throw Attempts: Home vs. Road Teams", 
+       subtitle = "2018-19 Regular Season",
+       x = "", 
+       y = "Free Throw Attempts per Game") +
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 4, 
+               color = "white", fill = "white") + 
+  theme(legend.position = "none") +
+  scale_x_discrete(labels = temp2.text) +
+  theme(plot.title = element_text(face = "bold")) +
+  stat_compare_means(method = "t.test", 
+                     label.x = 1.4, label.y = 48)
+
+p1 + p2 + plot_layout(ncol = 2) 
+```
+
+Our paired boxplots clearly show the variances in population means (represented by the white dots inside the boxes) and additional differences in the length, or dispersion, of the interquartile ranges (represented by the boxes only) between home and road teams.
+
+We might have otherwise been distracted by the outliers in both plots. For instance, at least five times during the 2018-19 regular season teams were called for a minimum of 34 personal fouls; and at least twice teams attempted more than 50 free throws.
+
+
+2019 postseason Analysis
+
+Because not every NBA team qualifies for the postseason and because teams are then eliminated in each round, our analysis will be performed against a much shorter data set than before. Whereas the fouls1819reg data set contained 1,230 records, we’ll now be working with a data set just 82 rows long. Therefore, to again get statistically-significant results, our variances will presumably need to be more substantial than before.
+
+```{r}
+fouls1819 %>%
+ filter(dataset == "NBA 2019 Playoffs") -> fouls1819post
+
+sum(fouls1819post$pfR) - sum(fouls1819post$pfH)
+
+mean(fouls1819post$pfR) - mean(fouls1819post$pfH)
+
+mean(fouls1819post$ftaR) - mean(fouls1819post$ftaH)
+
+sum(fouls1819post$ftR) / sum(fouls1819post$ftaR)
+
+sum(fouls1819post$ftH) / sum(fouls1819post$ftaH)
+
+
+```
+
+Here’s a summary of our results, including comparisons against the 2018-19 regular season:
+
+• Road teams were called for 48 more personal fouls than home teams during the 2019 playoffs; to be more specific, road teams were called for a grand total of 1,843 fouls during the 2019 postseason while home teams were called for 1,795 personal fouls.
+
+• That averages out to a variance of 0.59; which is to say road teams on average were called for 0.59 more personal fouls per playoff game than were home teams. The difference during the regular season equaled 0.38.
+
+• Consequently, home teams attempted 1.28 more free throws per playoff game than road teams; this variance is about twice that of regular season games.
+
+• Road teams made almost 79% of their free throw attempts while home teams were successful on about 78% of their attempted free throws. These figures are slightly higher than those during the regular season.
+
+## T-TEST: PERSONAL FOULS
+
+```{r}
+t.test(fouls1819post$pfR, fouls1819post$pfH)
+
+```
+
+The p-value equals 0.31; because it’s greater than 0.05–much greater, in fact–we should fail to reject the null hypothesis and should therefore conclude the variance in personal fouls called between road and home teams is not significant; the means are essentially equal. While the raw numbers are directionally consistent with the 2018-19 regular season, the results are neutral. Turns out the drop in record count influenced the t-test results more than did the increase in the variance
+
+## T-TEST: FREE THROW ATTEMPTS
+
+```{r}
+t.test(fouls1819post$ftaR, fouls1819post$ftaH)
+```
+Because the p-value is again greater than the 0.05 threshold for significance–0.23 to be exact– we must again conclude that the population means are essentially equal and therefore fail to reject the null hypothesis. While the results are again directionally consistent with our regular season results, we are nevertheless compelled to once more qualify the results as neutral.
+
+```{r}
+temp3 <- select(fouls1819post, c(6,11))
+temp3 %>%
+ pivot_longer(cols = c(pfR, pfH),
+              names_to = "team",
+              values_to = "fouls") -> temp3
+head(temp3)
+
+temp3.text <- c("Home Team", "Road Team")
+p3 <- ggplot(temp3, aes(x = team, y = fouls, fill = team)) +
+ geom_boxplot() +
+ labs(title = "Personal Foul Calls: Home vs. Road Teams",
+      subtitle = "2019 Playoffs",
+      x = "",
+      y = "Personal Fouls per Game") +
+ stat_summary(fun = mean, geom = "point", shape = 20, size = 8,
+              color = "white", fill = "white") +
+ theme(legend.position = "none") +
+ scale_x_discrete(labels = temp1.text) +
+ theme(plot.title = element_text(face = "bold")) +
+ stat_compare_means(method = "t.test", label.x = 1.4, label.y = 34)
+
+temp4 <- select(fouls1819post, c(5,10))
+temp4 %>%
+ pivot_longer(cols = c(ftaR, ftaH),
+              names_to = "team",
+              values_to = "ftattempts") -> temp4
+head(temp4)
+
+temp4.text <- c("Home Team", "Road Team")
+p4 <- ggplot(temp4, aes(x = team, y = ftattempts, fill = team)) +
+ geom_boxplot() +
+ labs(title = "Free Throw Attempts: Home vs. Road Teams",
+      subtitle = "2019 Playoffs",
+      x = "",
+      y = "Free Throw Attempts per Game") +
+ stat_summary(fun = mean, geom = "point", shape = 20, size = 8,
+ color = "white", fill = "white") +
+ theme(legend.position = "none") +
+ scale_x_discrete(labels = temp2.text) +
+ theme(plot.title = element_text(face = "bold")) +
+ stat_compare_means(method = "t.test", label.x = 1.4, label.y = 48)
+p3 + p4 + plot_layout(ncol = 2)
+```
+
+To summarize our findings from the 2018-19 season:
+
+• The variances in personal fouls called and free throw attempts during the regular season are statistically significant between road and home teams. Road teams are called for more personal fouls than home teams, while home teams attempt more free throws than road teams. These differences matter over the course of an entire regular season.
+
+• The variances in these same two measures during postseason play are directionally consistent with our regular season results, but otherwise neutral; they are not statistically significant, mostly due to the low record count.
+
+### Effect size testing
+
+```{r}
+cohen.d(fouls1819reg$pfR, fouls1819reg$pfH)
+```
+
+```{r}
+cohen.d(fouls1819reg$ftaR, fouls1819reg$ftaH)
+```
+According to our Cohen's d test the actual difference doesn;t really matter, but differences in means between two samples or two populations should matter less when the record counts are small and should matter much more when we have more data.
+
+## Analysis on 2019-20 Data
+
+We will do the same thing for 2019-20 data 
+
+```{r}
+df2 %>%
+  filter(VENUE == "R") -> df5
+
+df5 %>%
+  select(DATASET, GAME_ID, TEAM, VENUE, FT, FTA, PF) -> df5
+
+df5 %>% 
+  rename(dataset = DATASET, gameID = GAME_ID, teamR = TEAM, venueR = VENUE, 
+         ftR = FT, ftaR = FTA, pfR = PF) -> df5
+
+df5$dataset <- factor(df5$dataset)
+df5$teamR <- factor(df5$teamR)
+df5$venueR <- factor(df5$venueR)
+
+df2 %>%
+  filter(VENUE == "H") -> df6
+
+df6 %>%
+  select(TEAM, VENUE, FT, FTA, PF) -> df6
+
+df6 %>% 
+  rename(teamH = TEAM, venueH = VENUE, ftH = FT, ftaH = FTA,
+               pfH = PF) -> df6
+
+df6$teamH <- as.factor(df6$teamH)
+df6$venueH <- as.factor(df6$venueH)
+
+fouls1920 <- cbind(df5, df6)
+
+fouls1920 %>% 
+  filter(gameID <= 21900973) -> fouls1920a
+
+```
+
+
+```{r}
+fouls1920 %>%
+ filter(gameID <= 21900973) -> fouls1920a
+sum(fouls1920a$pfR) - sum(fouls1920a$pfH)
+
+mean(fouls1920a$pfR) - mean(fouls1920a$pfH)
+
+mean(fouls1920a$ftaR) - mean(fouls1920a$ftaH)
+
+sum(fouls1920a$ftR) / sum(fouls1920a$ftaR)
+
+sum(fouls1920a$ftH) / sum(fouls1920a$ftaH)
+
+
+```
+
+Our results are as follows:
+
+• Road teams were called for 378 more personal fouls than home teams, equal to the difference between 20,171 fouls and 19,793 fouls.
+
+• Road teams were therefore called for 0.39 more personal fouls per game than were home teams (the per game average during the 2018-19 regular season equaled 0.38).
+
+• Home teams attempted 0.60 more free throws per game than did road teams (the per game average from the prior regular season was 0.65).
+
+• Road and home teams were successful on 77% of their free throw attempts.
+
+### Two-Sample T test
+
+```{r}
+t.test(fouls1920a$pfR, fouls1920a$pfH)
+t.test(fouls1920a$ftaR, fouls1920a$ftaH)
+```
+
+This time, our results are barely insignificant; consequently, we must fail to reject the null hypothesis and accept that the population means as essentially equal–once more, because we’re using 5% as a pre-defined cutoff. But otherwise our results say there is just a 7% probability of observing at least equal results if the null hypothesis were actually true. So, while the variance is technically not significant, the p-value is low and obviously very close to our pre-defined threshold for significance. 
+
+```{r}
+temp5 <- select(fouls1920a, c(7,12))
+temp5 %>%
+ pivot_longer(cols = c(pfR, pfH),
+              names_to = "team",
+              values_to = "fouls") -> temp5
+head(temp5)
+
+temp5.text <- c("Home Team", "Road Team")
+p5 <- ggplot(temp5, aes(x = team, y = fouls, fill = team)) +
+ geom_boxplot() +
+ labs(title = "Personal Foul Calls: Home vs. Road Teams",
+      subtitle = "2019-20 Regular Season (pre-COVID)",
+      x = "",
+      y = "Personal Fouls per Game") +
+ stat_summary(fun = mean, geom = "point", shape = 20, size = 8,
+ color = "white", fill = "white") +
+ theme(legend.position = "none") +
+ scale_x_discrete(labels = temp1.text) +
+ theme(plot.title = element_text(face = "bold")) +
+ stat_compare_means(method = "t.test", label.x = 1.4, label.y = 43)
+
+temp6 <- select(fouls1920a, c(6,11))
+
+temp6 %>%
+ pivot_longer(cols = c(ftaR, ftaH),
+              names_to = "team",
+              values_to = "ftattempts") -> temp6
+head(temp6)
+
+temp6.text <- c("Home Team", "Road Team")
+p6 <- ggplot(temp6, aes(x = team, y = ftattempts, fill = team)) +
+ geom_boxplot() +
+ labs(title = "Free Throw Attempts: Home vs. Road Teams",
+      subtitle = "2019-20 Regular Season (pre-COVID)",
+      x = "",
+      y = "Free Throw Attempts per Game") +
+ stat_summary(fun = mean, geom = "point", shape = 20, size = 8,
+ color = "white", fill = "white") +
+ theme(legend.position = "none") +
+ scale_x_discrete(labels = temp1.text) +
+ theme(plot.title = element_text(face = "bold")) +
+ stat_compare_means(method = "t.test", label.x = 1.4, label.y = 48)
+p5 + p6 + plot_layout(ncol = 2)
+
+```
+
+There appears to be less of a difference in the length, or dispersion, of these two pairs of
+boxplots versus what we observed with the 2018-19 data, regular season and postseason.
+Nevertheless, we can clearly see the population means are not at all aligned.
+
+## 2019-20 regular season analysis (post-COVID)
+
+```{r}
+fouls1920 %>%
+ filter(dataset == "NBA 2019-2020 Regular Season" & gameID >= 21901231) -> fouls1920b
+sum(fouls1920b$pfR) - sum(fouls1920b$pfH)
+
+mean(fouls1920b$pfR) - mean(fouls1920b$pfH)
+
+mean(fouls1920b$ftaR) - mean(fouls1920b$ftaH)
+
+sum(fouls1920b$ftR) / sum(fouls1920b$ftaR)
+
+sum(fouls1920b$ftH) / sum(fouls1920b$ftaH)
+```
+
+• Road teams–even though Orlando was technically a neutral site, teams were nevertheless designated as road and home, and the NBA decked the arena in the home team’s logo and colors–were called for a grand total of 54 more personal fouls than were home teams. Over the course of an 89-game schedule, roughly equal to a typical postseason, the designated road team committed 2,064 personal fouls and the designated home team committed 2,010 personal fouls.
+
+• Which equals a per game variance equal to 0.61, which is a bit higher than what we’ve otherwise observed.
+
+• But that variance didn’t fully translate to free throw attempts. Home teams average  only 0.24 more free throw attempts per game than road teams, which perhaps suggests an inordinate number of personal foul calls were offensive or loose ball fouls, where free throws are not awarded.
+
+• Both road and home teams were successful on approximately 79% of their attempted
+free throws.
+
+## T-TESTS: PERSONAL FOULS AND FREE THROW ATTEMPTS
+
+```{r}
+t.test(fouls1920b$pfR, fouls1920b$pfH)
+t.test(fouls1920b$ftaR, fouls1920b$ftaH)
+```
+
+Number one, even though road teams were called for 0.61 more personal fouls per game than home teams, this didn’t register on our first t-test. Where our data set is just 89 rows long, the computed p-value equals 0.35, way above the 0.05 threshold for significance, thereby compelling us to not reject the null hypothesis and to conclude that these means are essentially equal.
+
+Number two, given the small difference in attempted free throws per game between, road and home teams and the small record count in our data, it’s no surprise that our second t-test returned a very high p-value (0.84). So, once again, the results are essentially neutral. Both results, however, are consistent with our prior results. 
+
+```{r}
+temp7 <- select(fouls1920b, c(7,12))
+temp7 %>%
+ pivot_longer(cols = c(pfR, pfH),
+              names_to = "team",
+              values_to = "fouls") -> temp7
+head(temp7)
+
+temp7.text <- c("Home Team", "Road Team")
+
+p7 <- ggplot(temp7, aes(x = team, y = fouls, fill = team)) +
+ geom_boxplot() +
+ labs(title = "Personal Foul Calls: Home vs. Road Teams",
+      subtitle = "2019-20 Regular Season (post-COVID)",
+      x = "",
+      y = "Personal Fouls per Game") +
+ stat_summary(fun = mean, geom = "point", shape = 20, size = 8,
+ color = "white", fill = "white") +
+ theme(legend.position = "none") +
+ scale_x_discrete(labels = temp1.text) +
+ theme(plot.title = element_text(face = "bold")) +
+ stat_compare_means(method = "t.test", label.x = 1.4, label.y = 38)
+
+temp8 <- select(fouls1920b, c(6,11))
+temp8 %>%
+ pivot_longer(cols = c(ftaR, ftaH),
+              names_to = "team",
+              values_to = "ftattempts") -> temp8
+head(temp8)
+
+temp8.text <- c("Home Team", "Road Team")
+p8 <- ggplot(temp8, aes(x = team, y = ftattempts, fill = team)) +
+ geom_boxplot() +
+ labs(title = "Free Throw Attempts: Home vs. Road Teams",
+      subtitle = "2019-20 Regular Season (post-COVID)",
+      x = "",
+      y = "Free Throw Attempts per Game") +
+ stat_summary(fun = mean, geom = "point", shape = 20, size = 8,
+              color = "white", fill = "white") +
+ theme(legend.position = "none") +
+ scale_x_discrete(labels = temp1.text) +
+ theme(plot.title = element_text(face = "bold")) +
+ stat_compare_means(method = "t.test", label.x = 1.4, label.y = 43)
+p7 + p8 + plot_layout(ncol = 2)
+```
+
+Our findings from the 2019-20 season are similar to those from 2018-19:
+
+• Results pre- and post-COVID are directionally consistent in favor of home teams, regardless of measure.
+
+• Variances are statistically significant pre-COVID and not statistically significant postCOVID, not so much because the variances changed but more because of the dissimilarity in record counts. 
+
+Thus we can conclude that:
+
+• All results–personal foul calls and attempted free throws, 2018-19 regular season and
+postseason, 2019-20 regular season pre- and post-COVID–returned results that
+directionally favored home teams.
+
+• Where we had relatively large record counts–namely, the 2018-19 regular season and
+the 2019-20 regular season before COVID–the road and home team variances in
+personal fouls called and attempted free throws, based on our t-tests, were statistically
+significant.
+
+• Conversely, where we had lower record counts–the 2019 playoffs and the 2019-20
+regular season games played in Orlando–variances in personal foul calls and attempted
+free throws between road and home teams were not statistically significant, based on
+a 5% threshold.
+
+• Our Cohen’s d tests, which ignore record counts and instead leverage means and
+standard deviations, returned the same results every time: the differences in personal
+fouls and free throw attempts between road and home teams were always rated as
+negligible.
+
+• We can therefore conclude that there was some officiating bias during the 2018-19 and
+2019-20 seasons; but we can only speculate (crowd and other atmospheric influences?)
+as to what might be causing this bias.
+
+• Furthermore, we can only speculate how this bias affected outcomes. Our purpose was
+not to explain why, or how, home teams sometimes win games unfairly; rather, it was
+merely to explain, as it turned out, that home teams oftentimes get a slight, but
+statistically-significant, edge in officiating.
+

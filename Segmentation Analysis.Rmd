@@ -1,0 +1,442 @@
+---
+title: "Segmentation Analysis"
+author: "Kuanyu Lai"
+date: "2023-12-18"
+output: 
+  rmdformats::html_clean:
+    highlight: kate
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(networkD3)
+library(patchwork)
+```
+
+## Segmentation Analysis
+
+Tanking is the practice of purposely losing games in one season in order to secure a higher pick in the draft prior to the next season. The NBA draft, held annually during the off-season, is where teams take turns selecting the best eligible players from the United States and abroad. Like drafts in other US professional sports, the NBA draft is the exact opposite of a meritocracy; it is a worst-selects-first system that "awards" teams with the lowest number of wins to pick highest in the draft and therefore obtain rights to the best available players,our hypothesis is that tanking is a rational and worthwhile strategy for losing teams that want to become winners. We intend to explore this hypothesis by segmenting our data and then demonstrating different and incrementally more technical analysis techniques against it. Segmentation analysis is the process by which data--usually customers, but could also very well be NBA first-round draft picks--are divided based on one or more common characteristics.
+
+Teams tank because it seems to work; superstars are an absolute requirement to win championships. And superstars are almost always top-five selections in the draft (though topfive selections are not always superstars). Therefore, teams must lose way more games than they win, intentionally if that's what it takes, in order to draft a potential superstar.
+
+NBA teams fixed on acquiring superstar talent to win championships generally follow one of two plans of action: through the draft or through veteran free agency. One of the unintended, yet perpetual, consequences of the NBA draft is that teams often tank when their rebuilding plans converge around it; that is, teams intentionally lose games by trading their best players and promoting benchwarmers in exchange for a long-term competitive edge made possible by the year-over-year accumulation of draft picks, especially high draft picks. In 1985, right after the Houston Rockets tanked to the top of the draft and selected Hakeem Olajuwon, one of the league’s all-time greats, the NBA inaugurated a lottery for its worst teams. (The Rockets subsequently won a pair of league titles.) The lottery disincentivized tanking—and preserved the integrity of play in the process—by randomizing the draft order and depriving teams of guaranteed outcomes based on wins and losses. Sort of.
+ 
+The NBA draft remains a kakistocracy, where the worst teams from one season are rewarded before the next, because tanking gives teams no less than a reasonable chance of securing a top pick, and success provides virtually no chance. Take the Philadelphia 76ers: between 2013 and 2016, nearly 30 years after the first lottery, the 76ers tanked their way to the near top of the draft board, winning a total of 47 regular season games in the process, but then, minus the 2019–20 season shortened because of COVID-19, averaging 51 wins per season after selecting Joel Embiid and others. Every NBA team, by the way, plays an 82-game regular season schedule; so an average team would have 41 wins per season.
+
+Championships are won with superstar talent, which is only available at or near the very top of the draft board. Aside from a previous trade, the only way to guarantee access to superstar talent is to tank.
+
+```{r}
+draft2 <- read_csv("data/data/draft2.csv")
+glimpse(draft2)
+```
+
+```{r}
+dim(draft2)
+```
+
+### Creating Derived Variables
+
+```{r}
+mutate(draft2, Pk2 = ifelse(Pk %in% 1:5, "1-5",
+                            ifelse(Pk %in% 6:10, "6-10",
+                                   ifelse(Pk %in% 11:15, "11-15",
+                                          ifelse(Pk %in% 16:20, "16-20",
+                                                 ifelse(Pk %in% 21:25, "21-25",
+                                                        ifelse(Pk %in% 26:30, "26-30", "NA"))))))) -> draft2
+
+draft2$Pk2 <- as.factor(draft2$Pk2)
+```
+
+## Visualizing Mean and Median of Games Played from Draft-Picks
+
+```{r}
+sumG <- sum(draft2$G)
+draft2 %>%
+ group_by(Pk2) %>%
+ summarize(mean = mean(G),
+           median = median(G),
+           pct = sum(G)/sumG) -> tibble1
+print(tibble1)
+```
+
+```{r}
+g1 <- ggplot(tibble1, aes(x = Pk2, y = mean)) + 
+  geom_bar(stat = "identity", width = .8, 
+           fill = "coral", color = "coral4") + 
+  labs(title = "Average Career Games Played",
+       subtitle = "First-Round Selections between 2000 and 2009 NBA Drafts", 
+       x = "Segment", 
+       y = "Average Career Games Played",
+       caption = "regular season games only") + 
+  scale_x_discrete(limits = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30"),
+                   labels = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30")) +
+  geom_text(aes(label = trunc(mean), vjust = -0.3)) +
+  geom_label(aes(label = trunc(pct*100), vjust = 1.2)) +
+  ylim(0, 800) +
+  theme(plot.title = element_text(face = "bold"))
+
+g2 <- ggplot(tibble1, aes(x = Pk2, y = median)) + 
+  geom_bar(stat = "identity", width = .8, 
+           fill = "coral3", color = "coral4") + 
+  labs(title = "Median Career Games Played",
+       subtitle = "First-Round Selections between 2000 and 2009 NBA Drafts", 
+       x = "Segment", 
+       y = "Median Career Games Played",
+       caption = "regular season games only") + 
+  scale_x_discrete(limits = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30"),
+                   labels = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30")) +
+  geom_text(aes(label = trunc(median), vjust = -0.3)) +
+  geom_label(aes(label = trunc(pct*100), vjust = 1.2)) +
+  ylim(0, 800) +
+  theme(plot.title = element_text(face = "bold"))
+
+g1 + g2 + plot_layout(ncol = 1)
+```
+
+Based on the graph above, we can draw the following conclusions
+
+-   Players selected within the 1-5 segment played in more regular
+    season games, based on means and medians, than any other group of
+    first-round selections
+
+-   Players then selected within the 6-10 segment played in more regular
+    season games than players selected later in the first round
+
+-   In no other segment does the percentage of regular season games
+    played exceed or even equal their respective percentage of draft2
+    record counts; in other words, segments 11-15, 16-20, 21-25, and
+    26-30 each contribute approximately 17% of the records to the draft2
+    data set, yet the percentage of total regular season games played
+    across those four segments is consistently less than 17%. Which
+    absolutely supports our hypothesis--teams that tank and move up the
+    draft board as a result are more likely to draft a player who will
+    then play in more games than other players.
+
+## Visualizing Mean and Median of Minutes Played from Draft-Picks
+
+```{r}
+sumMP <- sum(draft2$MP)
+draft2 %>% 
+  group_by(Pk2) %>%
+  summarize(mean = mean(MP),
+            median = median(MP),
+            pct = sum(MP)/sumMP) -> tibble2
+
+mp1 <- ggplot(tibble2, aes(x = Pk2, y = mean)) + 
+  geom_bar(stat = "identity", width = .8, 
+           fill = "deepskyblue", color = "deepskyblue4") + 
+  labs(title = "Average Minutes Played per Game",
+       subtitle = "First-Round Selections between 2000 and 2009 NBA Drafts", 
+       x = "Segment", 
+       y = "Average Minutes Played per Game",
+       caption = "regular season games only") + 
+  scale_x_discrete(limits = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30"),
+                   labels = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30")) +
+  geom_text(aes(label = trunc(mean), vjust = -0.3)) +
+  geom_label(aes(label = trunc(pct*100), vjust = 1.2)) +
+  ylim(0, 30) +
+  theme(plot.title = element_text(face = "bold"))
+
+mp2 <- ggplot(tibble2, aes(x = Pk2, y = median)) + 
+  geom_bar(stat = "identity", width = .8, 
+           fill = "deepskyblue3", color = "deepskyblue4") + 
+  labs(title = "Median Minutes Played per Game",
+       subtitle = "First-Round Selections between 2000 and 2009 NBA Drafts", 
+       x = "Segment", 
+       y = "Median Minutes Played per Game",
+       caption = "regular season games only") + 
+  scale_x_discrete(limits = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30"),
+                   labels = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30")) +
+  geom_text(aes(label = trunc(median), vjust = -0.3)) +
+  geom_label(aes(label = trunc(pct*100), vjust = 1.2)) +
+  ylim(0, 30) +
+  theme(plot.title = element_text(face = "bold"))
+
+mp1 + mp2 + plot_layout(ncol = 1)
+```
+
+These results are similar but, at the same time, more definite than our first set of
+results. They are summarized for you here:
+
+-   Players selected in the 1–5 segment played, on average, approximately 18% more minutes per game than players in the 6–10 segment and roughly 33% more minutes than players from the other four segments.
+
+-   There is clear and obvious separation between segments 1–5 and 6–10 and further separation between 6–10 and all other segments.
+
+-   There is almost no variance between segments 11–15, 16–20, 21–25, and 26–30. All of this further supports our hypothesis that tanking makes sense—if that’s what it takes for a team to select in the 1–5 segment, or even the 6–10 segment, versus anywhere else in the first round.
+
+## Visualizing Mean and Median of WS from Draft-Picks
+
+```{r}
+sumWS <- sum(draft2$WS)
+draft2 %>% 
+  group_by(Pk2) %>%
+  summarize(mean = mean(WS),
+            median = median(WS),
+            pct = sum(WS)/sumWS) -> tibble3
+
+ws1 <- ggplot(tibble3, aes(x = Pk2, y = mean)) + 
+  geom_bar(stat = "identity", width = .8, 
+           fill = "springgreen", color = "springgreen4") + 
+  labs(title = "Average Career Win Shares",
+       subtitle = "First-Round Selections between 2000 and 2009 NBA Drafts", 
+       x = "Segment", 
+       y = "Average Career Win Shares",
+       caption = "regular season games only") + 
+  scale_x_discrete(limits = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30"),
+                   labels = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30")) +
+  geom_text(aes(label = trunc(mean), vjust = -0.3)) +
+  geom_label(aes(label = trunc(pct*100), vjust = 1.2)) +
+  ylim(0, 60) +
+  theme(plot.title = element_text(face = "bold"))
+
+ws2 <- ggplot(tibble3, aes(x = Pk2, y = median)) + 
+  geom_bar(stat = "identity", width = .8, fill = "springgreen3", color = "springgreen4") + 
+  labs(title = "Median Career Win Shares",
+       subtitle = "First-Round Selections between 2000 and 2009 NBA Drafts", 
+       x = "Segment", y = "Median Career Win Shares",
+       caption = "regular season games only") + 
+  scale_x_discrete(limits = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30"),
+                   labels = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30")) +
+  geom_text(aes(label = trunc(median), vjust = -0.3)) +
+  geom_label(aes(label = trunc(pct*100), vjust = 1.2)) +
+  ylim(0, 70) +
+  theme(plot.title = element_text(face = "bold"))
+
+ws1 + ws2 + plot_layout(ncol = 1)
+```
+
+-   Players in the 1–5 segment, on average, accrued almost twice as many career win shares as players in the 6–10 segment and about three times as many win shares as players from any other segment.
+
+-   These same players—again, 17% of the draft2 population—account for 34% of all win shares, and players in the top-two segments, roughly 34% of the draft2 population, account for at least 53% of all win shares.
+
+-   While there are significant differences at the top end of the draft, there is little to no difference between the 11–15 through 26–30 segments.
+
+-   This is the best evidence we have so far that our going-in hypothesis is correct; on the most important metric, we have the greatest differentiation between the top segments and the remaining segments.
+
+## Visualizing Mean and Median of WS48 from Draft-Picks
+
+```{r}
+sumWS48 <- sum(draft2$`WS/48`)
+draft2 %>% 
+  group_by(Pk2) %>%
+  summarize(mean = mean(`WS/48`),
+            median = median(`WS/48`),
+            pct = sum(`WS/48`)/sumWS48) -> tibble4
+
+ws3 <- ggplot(tibble4, aes(x = Pk2, y = mean)) + 
+  geom_bar(stat = "identity", width = .8, 
+           fill = "gold", color = "gold4") + 
+  labs(title = "Average Win Shares per 48 Minutes",
+       subtitle = "First-Round Selections between 2000 and 2009 NBA Drafts", 
+       x = "Segment", 
+       y = "Average Win Shares per 48 Minutes",
+       caption = "regular season games only") + 
+  scale_x_discrete(limits = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30"),
+                   labels = c("1-5", "6-10", "11-15",
+                              "16-20", "21-25", "26-30")) +
+  geom_text(aes(label = round(mean, 2), vjust = -0.3)) +
+  geom_label(aes(label = trunc(pct*100), vjust = 1.2)) +
+  ylim(0, 0.13) +
+  theme(plot.title = element_text(face = "bold"))
+
+ws4 <- ggplot(tibble4, aes(x = Pk2, y = median)) + 
+  geom_bar(stat = "identity", width = .8, fill = "gold3", color = "gold4") + 
+  labs(title = "Median Win Shares per 48 Minutes",
+       subtitle = "First-Round Selections between 2000 and 2009 NBA Drafts", 
+       x = "Segment", y = "Median Win Shares per 48 Minutes",
+       caption = "regular season games only") + 
+  scale_x_discrete(limits = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30"),
+                   labels = c("1-5", "6-10", "11-15", 
+                              "16-20", "21-25", "26-30")) +
+  geom_text(aes(label = round(median, 2), vjust = -0.3)) +
+  geom_label(aes(label = trunc(pct*100), vjust = 1.2)) +
+  ylim(0, 0.13) +
+  theme(plot.title = element_text(face = "bold"))
+
+ws3 + ws4 + plot_layout(ncol = 1)
+```
+Based on the above graph we can conclude that:
+
+-   Regardless of the measure, there is clear and obvious separation in performance and productivity between those players picked within the 1–5 segment versus those picked in the 6–10 segment, and there is further separation between the 6–10 segment and those players picked in the 11–15 segment.
+
+-   There are virtually no performance or productivity differences from the 11–15 segment through the rest of the first round, regardless of measure.
+
+-   Thus, there’s a definite incentive for teams to somehow get to the top, or very close to the top, of the draft board. Teams are clearly best off selecting at or near the top of the draft if they want—or need—a potential superstar.
+
+-   But how to get there? Trading up is almost impossible because that, of course, would require another team to trade down. As long as the NBA rewards losing teams with high draft picks, teams will—and should—tank, which, of course, compromises the integrity of play.
+
+-   Finally, we need to avoid sweeping conclusions that are above and beyond what we’re analyzing. Teams tanked in the 1970s too; they presumably did so because they wanted to increase their chances of selecting a potential superstar. But we
+can’t rationalize that. We can only say that tanking makes sense based on an analysis of the 2000 to 2009 NBA drafts and the subsequent professional careers of those players who were selected in the first round in those drafts. Don’t ever apply results to circumstances beyond the bounds of your testing and analysis.
+
+## Sanky Diagram
+
+```{r}
+draft2 %>%
+  mutate(Age2 = trunc(Age)) -> draft2
+
+draft2 %>%
+  mutate(draft2, WS2 = trunc(WS)) %>%
+  mutate(WS3 = case_when(WS2 <= 19 ~ "<20",
+                         WS2 >= 20 & WS2 <= 39 ~ "20-39",
+                         WS2 >= 40 & WS2 <= 59 ~ "40-59",
+                         WS2 >= 60 & WS2 <= 79 ~ "60-79",
+                         WS2 >= 80 & WS2 <= 99 ~ "80-99",
+                         WS2 >= 100 ~ "100+")) -> draft2
+nodes <- data.frame(
+  "name" = c("USA", "World",
+             "0", "1",
+             "17", "18", "19", "20", "21", "22", "23", "24", "25",
+             "Big",  "Center", "Forward", "Guard",  "Swingman",
+             "1-5",  "6-10", "11-15", "16-20", "21-25", "26-30",
+             "<20", "20-39", "40-59", "60-79", "80-99", "100+"))
+links <- as.data.frame(matrix(c(
+  0,2,21, 0,3,203,
+  1,2,51, 1,3,16,
+  2,4,1, 2,5,20, 2,6,19, 2,7,15, 2,8,12, 2,9,5, 2,10,0, 2,11,0, 2,12,0,
+  3,4,0, 3,5,3, 3,6,32, 3,7,50, 3,8,58, 3,9,58, 3,10,14, 3,11,3, 3,12,1,
+  4,13,0, 4,14,0, 4,15,1, 4,16,0, 4,17,0,
+  5,13,2, 5,14,8, 5,15,6, 5,16,2, 5,17,5,
+  6,13,11, 6,14,6, 6,15,15, 6,16,14, 6,17,5,
+  7,13,7, 7,14,12, 7,15,19, 7,16,24, 7,17,3,
+  8,13,9, 8,14,7, 8,15,19, 8,16,25, 8,17,10,
+  9,13,5, 9,14,5, 9,15,23, 9,16,24, 9,17,6,
+  10,13,0, 10,14,1, 10,15,4, 10,16,6, 10,17,3,
+  11,13,0, 11,14,1, 11,15,2, 11,16,0, 11,17,0,
+  12,13,0, 12,14,1, 12,15,0, 12,16,0, 12,17,0, 
+  13,18,7, 13,19,6, 13,20,8, 13,21,3, 13,22,2, 13,23,8,
+  14,18,7, 14,19,6, 14,20,7, 14,21,7, 14,22,6, 14,23,9,
+  15,18,16, 15,19,18, 15,20,13, 15,21,13, 15,22,13, 15,23,15,
+  16,18,15, 16,19,13, 16,20,15, 16,21,22, 16,22,18, 16,23,12,
+  17,18,5, 17,19,6, 17,20,7, 17,21,5, 17,22,3, 17,23,6,
+  18,24,12, 18,25,9, 18,26,9, 18,27,6, 18,28,2, 18,29,12,
+  19,24,19, 19,25,15, 19,26,5, 19,27,7, 19,28,3, 19,29,1,
+  20,24,33, 20,25,9, 20,26,3, 20,27,3, 20,28,1, 20,29,0,
+  21,24,27, 21,25,12, 21,26,8, 21,27,1, 21,28,2, 21,29,0,
+  22,24,30, 22,25,10, 22,26,7, 22,27,2, 22,28,1, 22,29,0,
+  23,24,26, 23,25,10, 23,26,2, 23,27,3, 23,28,0, 23,29,1),
+  byrow = TRUE, ncol = 3))
+names(links) = c("source", "target", "value")
+sankeyNetwork(Links = links, Nodes = nodes,
+              Source = "source", Target = "target",
+              Value = "value", NodeID = "name",
+              fontSize = 12, nodeWidth = 30)
+```
+
+Going from left to right, most players selected in the first round of
+the 2000 to 2009 NBA drafts were born in the United States (USA) versus
+some other country (World). More players first attended a college or
+university (1) than those who did not (0). Most players were between 19
+and 22 years of age when they entered the NBA draft. More players were
+selected as forwards and guards than other positions. Players are
+distributed across six equal "pick" segments, depending on where in the
+first round they were selected. All players then accrued some number of
+win shares; only a fraction of first-round picks then accrued many win
+shares, and most of them were picked in the 1-5 segment.
+
+From the diagram we can conclude that:
+
+-   Approximately four times as many first-round picks between the 2000
+    and 2009 NBA drafts were born in the United States versus some other
+    country.
+
+-   Most first-round picks born in the US played in college before
+    turning professional whereas a majority of first-round picks born
+    outside the US did not play in college
+
+-   More first-round picks, regardless of where they were born and
+    whether or not they first played in college, were aged 19-22 when
+    they entered the NBA draft; very few players were either younger
+    than 19 or older than 22 when they turned professional.
+
+-   More first-round picks were forwards or guards than any other
+    position.
+
+-   A large majority of the players with 100 or more win shares in their
+    respective careers were selected at or near the very top of the
+    draft.
+
+-   Most players with somewhere between 80 and 99 career win shares were
+    selected between the 1-5 and 6-10 Pk2 segments.
+
+## Hierarchical clustering
+
+Hierarchical clustering is just one type of clustering algorithm (we'll demonstrate another clustering method in a subsequent chapter) that groups, or clusters, data points based on their similarities or dissimilarities. Hierarchical clustering is an unsupervised learning method--unsupervised because we're not attempting to predict the value of a response variable, but instead find structure within a data set--that begins by assigning each observation, or data point, to its own cluster; the algorithm then churns and churns, reducing the number of clusters through each iteration, until we're left with just one cluster. We get the final results by plotting a dendrogram, which more or less resembles an upside-down tree, but which more importantly represents the hierarchy of clusters.
+
+```{r}
+draft2 %>%
+  select(Pk, WS) -> draft_clust
+
+draft_clust %>%
+  group_by(Pk) %>%
+  summarize(ws = mean(WS)) -> draft_clust_final
+head(draft_clust_final, n = 3)
+tail(draft_clust_final, n = 3)
+
+euclidean_distance <- sqrt((1 - 3)^2 + (69.6 - 66.9)^2)
+euclidean_distance
+
+euclidean_distance <- sqrt((2 - 3)^2 + (51.5 - 66.9)^2)
+euclidean_distance
+
+distance_matrix <- dist(draft_clust_final, method = "euclidean")
+print(distance_matrix)
+
+hc <- hclust(distance_matrix, method = "complete")
+bg = par(bg = "darkseagreen1")
+plot(as.dendrogram(hc, cex = 0.6, hang = -1),
+     main = "Cluster Dendrogram: Win Shares by First-Round Selection",
+     xlab = "First-Round Selection Number\n2000-2009 NBA Drafts",
+     ylab = "Height (aka Euclidian Distance)")
+rect.hclust(hc, k = 2)
+
+euclidean_distance <- sqrt((1 - 3)^2 + (69.6 - 66.9)^2)
+euclidean_distance
+```
+
+From the analysis of this segment we can conclude that
+
+-   Regardless of method, it's clear that not all first-round picks are
+    created equal. There is clear and obvious separation between players
+    drafted at or near the very top of any NBA draft versus most every
+    other available player.
+
+-   Acquiring superstar talent is an absolute necessity for teams
+    wanting to build a championship-caliber roster.
+
+-   Therefore, teams must possess one of the first few picks to have a
+    reasonable chance of selecting a potential superstar that can
+    ultimately lead them to a championship.
+
+-   Even with the lottery, about the only chance of selecting a
+    superstar is by having a losing record during the prior season;
+    better yet, teams should tank to ensure their record is worse than
+    other teams.
+    
+## Summary
+
+-   Regardless of method, it’s clear that not all first-round picks are created equal. There is clear and obvious separation between players drafted at or near the very top of any NBA draft and almost every other available player.
+
+-   Acquiring superstar talent is an absolute necessity for teams wanting to build a championship-caliber roster.
+
+-   Therefore, teams must possess one of the first few picks to have a reasonable chance of selecting a potential superstar that can ultimately lead them to a championship.
+
+-   Even with the lottery, about the only chance of selecting a superstar is by having a losing record during the prior season; better yet, teams should tank to ensure their record is worse than other teams.
+

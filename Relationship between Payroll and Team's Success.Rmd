@@ -1,0 +1,470 @@
+---
+title: "Relationship between Team's Payroll and Performance"
+author: "Kuanyu Lai"
+date: "2023-12-18"
+output: 
+  rmdformats::html_clean:
+    highlight: kate
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(scales)
+library(patchwork)
+
+```
+
+
+### Import Data
+
+```{r}
+library(readr)
+cap <- read_csv("data/data/salary_cap.csv")
+salaries <- read_csv("data/data/salaries.csv")
+```
+
+```{r}
+salaries %>%
+  select(Team, s2017, sa2017, w2017, pc2017) %>%
+  glimpse()
+
+dim(salaries)
+```
+
+
+### Salaries and salary cap analysis
+
+```{r}
+p1 <- ggplot(cap, aes(x = year, y = real, group = 1)) + 
+  geom_line(aes(y = real), color = "steelblue", size = 1.5, linetype = "dashed") +
+  geom_line(aes(y = adjusted), color = "black", size = 1.5) +
+  labs(title = "NBA Salary Cap in USD and 2021 USD", 
+       subtitle = "2000-2017", 
+       x = "Season", 
+       y = "Dollars",
+       caption ="The NBA salary cap in USD and 2021 USD between 2000 and 2017. For instance, the salary cap
+in 2010 was just under $60M. When that figure is converted to 2021 dollars the cap was approximately
+$70M. Which is why the two lines eventually converge. Whether we view the cap in real dollars or when
+adjusted for inflation, player salaries have more or less skyrocketed since 2000") +
+  theme(plot.title = element_text(face = "bold"),
+        plot.caption.position = "plot",
+        plot.caption = element_text(hjust = 0.7,color = "steelblue")) +
+  scale_y_continuous(labels = comma) +
+  scale_y_continuous(labels = dollar) +
+  annotate("text", x = 2005, y = 68000000, label = "2021 USD", fontface = "bold", color = c("black")) +
+  annotate("text", x = 2008, y = 50000000, label = "USD", fontface = "bold", color = c("steelblue")) 
+print(p1)
+```
+
+According to our first plot, the NBA salary cap was approaching 100M back in 2017. The salary cap represents the most teams are allowed to spend on player salaries for the year (though there are allowable exceptions). Most teams carry about 15 players on their active roster at any time, which suggests an average player could be banking as much as 7M annually in salary.
+
+
+Our second visualization is another ggplot2 line chart that requires some leading data wrangling. We start by creating a new data set from salaries called mean_salaries_real; the summarize() function computes the average team payroll in real dollars and the dplyr across() function applies the computation to a contiguous subset of the salaries variables. The na.rm argument is set to TRUE so that the mean calculation effectively ignores the NA values in the salaries data set; R would error out otherwise. Else, take note that we’ve converted mean_salaries_real from a tibble to a classic data frame at the time of print by calling the base R as.data.frame() function. That’s because R would have else returned results in scientific notation; the workaround is to simply convert the object from a tibble to a data frame.
+
+```{r}
+salaries %>%
+  summarize(across(s2017:s2000, mean, na.rm = TRUE)) -> mean_salaries_real
+
+mean_salaries_real %>%
+  pivot_longer(col = c(s2017:s2000),
+               names_to = "year",
+               values_to = "real") -> new_mean_salaries_real
+
+salaries %>%
+  summarize(across(sa2017:sa2000, mean, na.rm = TRUE)) -> mean_salaries_adjusted
+
+mean_salaries_adjusted %>%
+  pivot_longer(col = c(sa2017:sa2000),
+               names_to = "year_temp",
+               values_to = "adjusted") -> new_mean_salaries_adjusted
+
+salaries_temp <- cbind(new_mean_salaries_real, new_mean_salaries_adjusted)
+
+
+salaries_temp %>% 
+  select(-c(year_temp)) -> salaries_temp
+
+salaries_temp$year <- as.factor(2017:2000)
+
+p2 <- ggplot(salaries_temp, aes(x = year, y = real, group = 1)) + 
+  geom_line(aes(y = real), color = "steelblue", size = 1.5, linetype = "dashed") +
+  geom_line(aes(y = adjusted), color = "black", size = 1.5) +
+  labs(title = "Average Payroll per NBA Team in USD and 2021 USD Adjust for Inflation", 
+       subtitle = "2000-2017", 
+       x = "Season", 
+       y = "Dollars") +
+  theme(plot.title = element_text(face = "bold")) + 
+  scale_y_continuous(labels = comma) +
+  scale_y_continuous(labels = dollar) +
+  annotate("text", x = "2003", y = 85000000, 
+           label = "2021 USD", fontface = "bold", color = c("black")) +
+  annotate("text", x = "2007", y = 61000000, 
+           label = "USD", fontface = "bold", color = c("steelblue")) 
+print(p2)
+```
+When adjusted for inflation, the average team payroll was actually very stable from 2001 through 2014; it has otherwise increased at an increasing rate since then.
+
+## Analysis
+
+The more successful teams in the NBA–that is, teams that win more regular season games, qualify for postseason play, and win championships–spend more money on player salaries than teams that win fewer regular season games and fail to make the postseason. For some additional context, especially for those of you not terribly familiar with a typical NBA season:
+
+• The NBA’s 30 teams are divided into two 15-team conferences; the top eight teams
+from each conference at the end of the regular season qualify for the postseason.
+
+• The NBA regular season usually starts in mid-October and ends the following year in
+mid-April. It’s equally correct to reference an NBA season that starts, let’s say, in
+October 2021 and ends in April 2022 as the 2021-22 season or the 2022 season or the
+2022 year. All mean the same and all are equally correct; we will use these interchangeably.
+
+• Playoffs start immediately following the conclusion of the regular season, usually ending
+in early June. Postseason and playoffs are synonomous; both mean the same and
+therefore we will use these additional terms interchangeably.
+
+Though there are exceptions to most every rule, we’ll see if it can otherwise be proven that higher-paid NBA teams are more successful than lesser-paid teams, at least between 2000 and 2017, primarily by summarizing and visualizing our data–correlation plots that display the positive, and significant, year-over-year relationship between team payrolls and regular season wins; dot plots that rank order team payrolls and classify their season-ending disposition into one of three discrete bins, or categories; and lollipop charts that display yearover-year average team payrolls broken down by these same categories.
+
+```{r}
+cor(salaries$s2000, salaries$w2000, use = "complete.obs")
+
+cor(salaries$s2000, salaries$w2000, method = 'spearman',
+    use = "complete.obs")
+
+```
+
+```{r}
+salaries %>%
+ select(s2017:s2000, w2017:w2000) -> salaries_cor
+
+salaries_cor %>%
+ select(s2017:s2000) %>%
+ pivot_longer(col = c(s2017:s2000),
+              names_to = "year1",
+              values_to = "salary") -> salaries_sals
+
+salaries_cor %>%
+ select(w2017:w2000) %>%
+ pivot_longer(col = c(w2017:w2000),
+              names_to = "year2",
+              values_to = "wins") -> salaries_wins
+
+salaries_cor2 <- cbind(salaries_sals, salaries_wins)
+
+salaries_cor2 %>%
+ group_by(year1) %>%
+ summarize(cor = round(cor(salary, wins, use = "complete.obs"), digits = 2)) -> tbl1
+
+```
+
+```{r}
+cor.test(salaries_cor2$salary, salaries_cor2$wins)
+```
+
+```{r}
+salaries2000 <- select(salaries, Team, s2000, w2000, pc2000)
+salaries2000 <- na.omit(salaries2000)
+cor1 <- ggplot(salaries2000, aes(x = s2000, y = w2000, color = factor(pc2000))) + 
+  geom_point(size = 3) +
+  labs(title = "Correlation between Team Payrolls and Wins (1999-2000)",
+       subtitle = "correlation coefficient = 0.57",
+       x = "Team Payrolls", 
+       y = "Wins") + 
+  scale_x_continuous(labels = comma) +
+  scale_x_continuous(labels = dollar) +
+  geom_smooth(method = lm, se = FALSE) +
+  geom_smooth(method = lm, color = "green4",
+              data = salaries2000[salaries2000$s2000 > 20000000,], 
+              se = FALSE) +
+  theme(plot.title = element_text(face = "bold")) +
+  scale_color_manual(name = "", 
+                     labels = c("No playoffs", 
+                                "Made playoffs", 
+                                "Won title"), 
+                     values = c("0" = "navy", 
+                                "10" = "gold3", 
+                                "11" = "red")) +
+  theme(legend.position = "bottom")
+
+salaries2001 <- select(salaries, Team, s2001, w2001, pc2001)
+salaries2001 <- na.omit(salaries2001)
+cor2 <- ggplot(salaries2001, aes(x = s2001, y = w2001, color = factor(pc2001))) + 
+  geom_point(size = 3) +
+  labs(title = "Correlation between Team Payrolls and Wins (2000-01)",
+       subtitle = "correlation coefficient = 0.37",
+       x = "Team Payrolls", y = "Wins") + 
+  scale_x_continuous(labels = comma) +
+  scale_x_continuous(labels = dollar) +
+  geom_smooth(method = lm, se = FALSE) +
+  geom_smooth(method = lm, color = "green4",
+              data = salaries2001[salaries2001$s2001 > 20000000,], 
+              se = FALSE) +
+  theme(plot.title = element_text(face = "bold")) +
+  scale_color_manual(name = "", 
+                     labels = c("No playoffs", 
+                                "Made playoffs", 
+                                "Won title"), 
+                     values = c("0" = "navy", 
+                                "10" = "gold3", 
+                                "11" = "red")) +
+  theme(legend.position = "bottom")
+
+cor1 + cor2 + plot_layout(ncol = 2)
+
+```
+WE can see that:
+
+• Year-over-year, or season-over-season, there is a positive correlation between team payrolls and regular season wins. Which is to otherwise say, for instance, that as payrolls increase regular season wins increase.
+
+• There appears to be no year-over-year consistency in the correlation coefficients and, in fact, a substantial amount of variance in our results. For instance, the correlation coefficient between team payrolls and regular season wins was as low as 0.02, in 2006, and as high as 0.57, in 2000.
+
+• Additionally, we even see a lack of continuity in correlation coefficients between consecutive seasons; take 2008 and 2009, for example, where the correlation coefficient between team payrolls and regular season wins jumped from 0.16 to 0.43.
+
+• The few teams year-over-year with the highest payrolls almost always make the
+playoffs, while teams with the absolute lowest payrolls almost always fail to qualify for postseason play.
+
+• Championship-winning teams are usually near the top in both regular season wins and
+payroll.
+
+## Payroll versus end of season results
+
+Our journey continues with an examination of team payrolls plotted against one of three
+season-ending classifications, where every team either:
+
+• Qualifies for postseason play but fails to win a title, or
+
+• Qualifies for postseason play and wins the league championship, or
+
+• Does not win enough regular season games and therefore does not make the playoffs. We’ll visualize our results with a series of dot plots, one for each NBA season between 2000 and 2017, where our data source for each is a temporary subset of the salaries data set.
+
+
+A few additional notes about our dot plots:
+
+• We’re plotting real team payrolls, or salaries, and not adjusted salaries; so, the x-axis
+variable in our first dot plot, for instance, is s2000 rather than sa2000, where the former
+contains real 2000 salaries and the latter contains adjusted 2000 salaries.
+
+• As previously mentioned, we’re using current team names throughout for consistency
+and simplicity; in 2000, for instance, the Brooklyn Nets were the New Jersey Nets.
+Same franchise, different name. But the salaries data set makes reference only to the
+Brooklyn Nets.
+
+• Teams are ranked in descending order by their respective payrolls, hence the addition
+of the reorder() function inside the aesthetic.
+
+• As with our correlation plots, every team is cast into one of three bins, or classifications,
+that tie back to the three-level variables pc2000 to pc2017, where the factors 0, 10,
+and 11 are essentially converted to equal, respectively, No playoffs, Made playoffs, and
+Won title.
+
+• Finally, before calling the ggplot() function and creating our dot plots, we preface that
+code by subsetting the salaries data set on just the variables required for the succeeding
+plot and then, when necessary, omitting any and all rows with NAs by calling the base
+R na.omit() function. We don’t want to permanently delete all rows in salaries that
+might have a few NAs; so, we instead create a temporary subset and then apply the
+na.omit() function. This is necessary because of franchise adds, moves, and changes
+between 2000 and 2004.
+
+```{r}
+salaries2000 <- select(salaries, Team, s2000, pc2000)
+salaries2000 <- na.omit(salaries2000)
+dot1 <- ggplot(salaries2000) +
+  geom_point(aes(x = s2000, y = reorder(Team, s2000), 
+                 color = factor(pc2000)), size = 3) +
+  labs(title= "NBA Team Payrolls (USD) in Descending Order", 
+       subtitle = "1999-2000", 
+       x = "Team Payroll", 
+       y = "") +
+  scale_x_continuous(labels = label_dollar(scale_cut = cut_short_scale())) +
+  theme(plot.title = element_text(face = "bold")) + 
+  scale_color_manual(name = "", 
+                     labels = c("No playoffs", 
+                                "Made playoffs", 
+                                "Won title"), 
+                     values = c("0" = "navy", 
+                                "10" = "gold3", 
+                                "11" = "red")) +
+  theme(legend.position = "bottom")
+
+salaries2001 <- select(salaries, Team, s2001, pc2001)
+salaries2001 <- na.omit(salaries2001)
+dot2 <- ggplot(salaries2001) +
+  geom_point(aes(x = s2001, y = reorder(Team, s2001), 
+                 color = factor(pc2001)), size = 3) +
+  labs(title= "NBA Team Payrolls (USD) in Descending Order", 
+       subtitle = "2000-01", 
+       x = "Team Payroll", 
+       y = "") +
+  scale_x_continuous(labels = label_dollar(scale_cut = cut_short_scale())) +
+  theme(plot.title = element_text(face = "bold")) + 
+  scale_color_manual(name = "", 
+                     labels = c("No playoffs", 
+                                "Made playoffs", 
+                                "Won title"), 
+                     values = c("0" = "navy", 
+                                "10" = "gold3", 
+                                "11" = "red")) +
+  theme(legend.position = "bottom")
+
+dot1 + dot2 + plot_layout(ncol = 2)
+```
+We can see that title team doesn't neccessary have the highest salary.
+
+• League champions infrequently have the NBA’s highest payroll. In fact, over the 18 seasons in our data set, just twice–in 2010 and again in 2016–did the league champion have the highest payroll.
+
+• However, these same teams frequently have payrolls higher than fifty percent or more of the remaining teams,    and in fact oftentimes one of the NBA’s highest payrolls.
+
+• Teams with the highest payrolls usually make the playoffs; in fact, these teams usually have payrolls           significantly, not just modestly, higher than all other teams.
+
+• Teams with the lowest payrolls–teams with payrolls appreciably lower than the payrolls from all other teams–usually do not make the playoffs.
+
+• That higher payrolls are mostly associated with successful teams and lower payrolls are mostly associated with less successful teams is more obvious and more prevalent in recent years than in the early 2000s.
+
+
+## Payroll comparisons
+
+Let’s again pivot and take a year-over-year look at average team payrolls, sliced three ways just as before, where every team:
+
+• Qualifies for the playoffs but then fails to win a championship, or
+
+• Wins the league championship, or
+
+• Fails to even qualify for postseason play.
+
+We’ll visualize these results for every NBA season between 2000 and 2017 with lollipop charts, a contemporary alternative to bar charts.
+
+```{r}
+salaries2000 <- na.omit(salaries2000)
+
+salaries2000 %>%
+ group_by(pc2000) %>%
+ summarize(mean = mean(s2000)) %>%
+ mutate(mean2 = paste("$", round(mean/1000000), "M", sep = "")) -> tbl2
+ 
+tbl2$pc2000 <- c("No playoffs", "Made playoffs", "Won title")
+
+lol1 <- ggplot(tbl2, aes(x = pc2000, y = mean)) +
+ geom_segment(aes(x = pc2000, xend = pc2000,
+                  y = 0, yend = mean)) +
+ geom_point(size = 15, color = c("navy", "gold3", "red"),
+            fill = c("navy", "gold3", "red")) +
+ labs(title = "Team Payroll Comparisons (USD)",
+      subtitle = "1999-2000",
+      x = "",
+      y = "Averqge Team Payroll") +
+ scale_y_continuous(labels = label_dollar(scale_cut = cut_short_scale())) +
+ scale_x_discrete(limits = c("No playoffs", "Made playoffs", "Won title")) +
+ geom_text(aes(label = mean2), color = "white",
+                               fontface = "bold", size = 3) +
+ theme(plot.title = element_text(face = "bold"))
+```
+
+```{r}
+salaries2001 <- na.omit(salaries2001)
+salaries2001 %>%
+ group_by(pc2001) %>%
+ summarize(mean = mean(s2001)) %>%
+ mutate(mean2 = paste("$", round(mean/1000000), "M", sep = "")) -> tbl2
+ 
+tbl2$pc2001 <- c("No playoffs", "Made playoffs", "Won title")
+
+lol2 <- ggplot(tbl2, aes(x = pc2001, y = mean)) +
+ geom_segment(aes(x = pc2001, xend = pc2001, y = 0, yend = mean)) +
+ geom_point(size = 15, color = c("navy", "gold3", "red"), fill = c("navy", "gold3", "red")) +
+ labs(title = "Team Payroll Comparisons (USD)",
+      subtitle = "2000-01",
+      x = "",
+      y = "Averqge Team Payroll") +
+ scale_y_continuous(labels = label_dollar(scale_cut = cut_short_scale())) +
+ scale_x_discrete(limits = c("No playoffs", "Made playoffs", "Won title")) +
+ geom_text(aes(label = mean2), color = "white",
+            fontface = "bold", size = 3) +
+ theme(plot.title = element_text(face = "bold"))
+
+lol1 + lol2 + plot_layout(ncol = 2)
+```
+Here’s what our series of lollipop charts tells us about the data:
+
+• More frequently than not, championship-winning teams have payrolls equal to or
+greater than the average payroll for all other teams that qualified for postseason play;
+just as frequently, teams that make the playoffs but didn’t win a title have payrolls
+equal to or greater than the average payroll for those teams that fail to make the
+playoffs.
+
+• Both conditions are true in 11 of the 18 seasons in our data set, including nine of the
+last 11 seasons.
+
+• And in every year between 2000 and 2017 the average payroll for teams that made the
+playoffs but failed to win a title is equal to or (usually) greater than the average payroll
+for teams that failed to make the postseason.
+
+```{r}
+salaries %>%
+ select(sa2017:sa2000) %>%
+ pivot_longer(col = c(sa2017:sa2000),
+              names_to = "year1",
+              values_to = "salary") -> salaries_mean
+dim(salaries_mean)
+```
+
+```{r}
+salaries %>%
+ select(pc2017:pc2000) %>%
+ pivot_longer(col = c(pc2017:pc2000),
+              names_to = "year2",
+              values_to = "flag") -> salaries_flag
+dim(salaries_flag)
+
+```
+
+```{r}
+salaries2 <- cbind(salaries_mean, salaries_flag)
+dim(salaries2)
+
+```
+
+```{r}
+salaries2 <- na.omit(salaries2)
+salaries2 %>%
+ group_by(flag) %>%
+ summarize(mean = mean(salary, na.rm = TRUE)) %>%
+           mutate(mean2 = paste("$", round(mean/1000000),"M", sep = "")) -> tbl3
+print(tbl3)
+```
+
+```{r}
+tbl3$flag <- c("No playoffs", "Made playoffs", "Won title")
+p4 <- ggplot(tbl3, aes(x = flag, y = mean)) +
+ geom_segment(aes(x = flag, xend = flag, y = 0, yend = mean)) +
+ geom_point(size = 15, color = c("navy", "gold3", "red"), fill = c("navy", "gold3", "red")) +
+ labs(title = "Adjusted Team Payroll Comparisons (2021 USD)",subtitle = "2000-2017 Seasons",
+      x = "",
+      y = "Averqge Team Payroll\nAdjusted for Inflation") +
+ scale_y_continuous(labels = label_dollar(scale_cut = cut_short_scale())) +
+ scale_x_discrete(limits = c("No playoffs", "Made playoffs", "Won title")) +
+ geom_text(aes(label = mean2), color = "white", fontface = "bold", size = 3) +
+ theme(plot.title = element_text(face = "bold")) +
+ theme(panel.border = element_rect(fill = "transparent",
+ color = "lightskyblue", size = 2))
+print(p4)
+
+```
+
+Teams that win titles, on average, spend more on player salaries than teams that make the playoffs but don’t win a championship; and those teams spend, on average, more on player salaries than teams that fail to qualify for postseason play. Moreover, the difference in average salaries between teams that won a championship versus other teams that make the playoffs is minimal (only 3M), whereas the subsequent difference separating postseason teams and those teams that don’t make the postseason is more substantial (8M).
+
+## Conclusion
+
+• Based on our correlation test between team payrolls and regular season wins, there is a statistically-significant relationship between the two. While correlation does not, of course, necessarily mean causation, when bumped up against other evidence it’s hard to avoid the conclusion that payrolls influence wins.
+
+• The year-over-year correlation coefficient between payrolls and regular season wins trended quite differently before and after 2006. While hardly consistent from one year to the next, the correlation coefficient trended downward and then upward, thereby
+suggesting that payrolls more recently matter more in terms of wins and losses than they used to. Make the effort to insert multiple trendlines into your time series plots in order to tell a complete story.
+
+• Our dot plots and lollipop charts also suggest a more definite association between payrolls and qualifying, or not qualifying, for postseason play, especially after 2006.
+
+• Teams with the absolute highest payrolls, with very few exceptions, reach the playoffs.
+
+• Teams with the absolute lowest payrolls, with even fewer exceptions, fail to make the playoffs.
+
+• Championship-winning teams almost always have one of the league’s highest payrolls, especially recently.
+
